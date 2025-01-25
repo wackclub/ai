@@ -1,5 +1,6 @@
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, middleware::Logger};
 use reqwest::Client;
+use serde::{Serialize, Deserialize};
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -19,9 +20,32 @@ mod chat {
     use super::*;
     static COMPLETIONS_URL: &str = "https://api.deepseek.com/chat/completions";
 
-    pub async fn completions(data: web::Data<AppState>, req_body: String) -> Result<impl Responder, Box<dyn std::error::Error>> {
-        println!("Forwarding {:?}", req_body);
-        let res = data.client.post(COMPLETIONS_URL).body(req_body).send().await?;
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct ChatCompletionMessage {
+        role: String,
+        content: String
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct RequestPayload {
+        model: Option<String>,
+        messages: Vec<ChatCompletionMessage>,
+        stream: Option<bool>
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct Test {
+        foo: String
+    }
+
+    pub async fn completions(data: web::Data<AppState>, body: web::Json<RequestPayload>) -> Result<impl Responder, Box<dyn std::error::Error>> {
+        // let messages = serde_json::to_string(&body.messages)?;
+
+        let res = data.client.post(COMPLETIONS_URL).json(&RequestPayload {
+            model: Some("deepseek-chat".to_string()),
+            messages: body.messages.clone(),
+            stream: Some(false),
+        }).send().await?;
         let status = res.status();
         let text = res.text().await?;
         println!("RES TEXT: {:#?}", text);
