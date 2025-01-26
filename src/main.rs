@@ -1,10 +1,19 @@
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, middleware::Logger};
+use actix_files::NamedFile;
+use std::path::PathBuf;
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
 
 #[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+async fn index() -> impl Responder {
+    NamedFile::open_async("./static/index.html").await
 }
 
 #[post("/echo")]
@@ -61,7 +70,7 @@ struct AppState {
 pub async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
     use reqwest::header;
-
+    
     HttpServer::new(|| {
         let mut headers = header::HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
@@ -77,7 +86,7 @@ pub async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(web::Data::new(app_state))
-            .service(hello)
+            .service(index)
             .service(echo)
             .route("/chat/completions", web::post().to(chat::completions))
             .route("/hey", web::get().to(manual_hello))
