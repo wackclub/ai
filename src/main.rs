@@ -5,11 +5,11 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, middleware::Logger};
 use actix_files::NamedFile;
-use std::path::PathBuf;
+use actix_web::{get, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
 use reqwest::Client;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -32,29 +32,37 @@ mod chat {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ChatCompletionMessage {
         role: String,
-        content: String
+        content: String,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     pub struct RequestPayload {
         model: Option<String>,
         messages: Vec<ChatCompletionMessage>,
-        stream: Option<bool>
+        stream: Option<bool>,
     }
 
     #[derive(Deserialize, Debug)]
     pub struct Test {
-        foo: String
+        foo: String,
     }
 
-    pub async fn completions(data: web::Data<AppState>, body: web::Json<RequestPayload>) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    pub async fn completions(
+        data: web::Data<AppState>,
+        body: web::Json<RequestPayload>,
+    ) -> Result<impl Responder, Box<dyn std::error::Error>> {
         // let messages = serde_json::to_string(&body.messages)?;
 
-        let res = data.client.post(COMPLETIONS_URL).json(&RequestPayload {
-            model: Some("deepseek-chat".to_string()),
-            messages: body.messages.clone(),
-            stream: Some(false),
-        }).send().await?;
+        let res = data
+            .client
+            .post(COMPLETIONS_URL)
+            .json(&RequestPayload {
+                model: Some("deepseek-chat".to_string()),
+                messages: body.messages.clone(),
+                stream: Some(false),
+            })
+            .send()
+            .await?;
         let status = res.status();
         let text = res.text().await?;
         println!("RES TEXT: {:#?}", text);
@@ -70,10 +78,13 @@ struct AppState {
 pub async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
     use reqwest::header;
-    
+
     HttpServer::new(|| {
         let mut headers = header::HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
+        headers.insert(
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("application/json"),
+        );
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
         token.set_sensitive(true);
