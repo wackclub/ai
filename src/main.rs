@@ -1,11 +1,13 @@
 use actix_files::NamedFile;
-use actix_web::{get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web::error::ErrorBadRequest;
-use reqwest::{Client, header};
+use actix_web::{
+    get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use minijinja::{context, path_loader, Environment};
+use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use minijinja::{Environment, context, path_loader};
 
 #[get("/")]
 async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std::error::Error>> {
@@ -13,7 +15,13 @@ async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std:
         eprintln!("Failed to get DB connection: {:?}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
-    let sum: f32 = conn.query("SELECT SUM((response->'usage'->>'total_tokens')::real) FROM api_request_logs;", &[]).await?[0].get("sum");
+    let sum: f32 = conn
+        .query(
+            "SELECT SUM((response->'usage'->>'total_tokens')::real) FROM api_request_logs;",
+            &[],
+        )
+        .await?[0]
+        .get("sum");
     println!("{:#?}", sum as i32);
 
     let mut env = Environment::new();
@@ -53,7 +61,7 @@ mod chat {
     pub async fn completions(
         data: web::Data<AppState>,
         body: web::Json<RequestPayload>,
-        req: HttpRequest
+        req: HttpRequest,
     ) -> Result<impl Responder, Box<dyn std::error::Error>> {
         // let messages = serde_json::to_string(&body.messages)?;
 
@@ -73,20 +81,20 @@ mod chat {
             })
             .send()
             .await?
-            .json::<serde_json::Value>().await?;
+            .json::<serde_json::Value>()
+            .await?;
 
         let conn = data.db_pool.get().await.map_err(|e| {
             eprintln!("Failed to get DB connection: {:?}", e);
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
-        let peer_ip = req.peer_addr()
+        let peer_ip = req
+            .peer_addr()
             .ok_or_else(|| ErrorBadRequest("Client IP address not available"))?
             .ip();
 
-        let user_agent = req.headers()
-            .get("user-agent")
-            .map(|v| v.to_str().ok());
+        let user_agent = req.headers().get("user-agent").map(|v| v.to_str().ok());
 
         let qr = conn.query("INSERT INTO api_request_logs (request, response, ip, user_agent) VALUES ($1, $2, $3, $4)", &[&serde_json::to_value(body.into_inner())?, &res, &peer_ip, &user_agent]).await;
         println!("{:#?}", qr);
@@ -97,7 +105,7 @@ mod chat {
 
 struct AppState {
     client: Client,
-    db_pool: Pool
+    db_pool: Pool,
 }
 
 #[actix_web::main]
@@ -107,20 +115,26 @@ pub async fn main() -> std::io::Result<()> {
     //#region DB setup
     let mut db_cfg = Config::new();
     db_cfg.url = Some(std::env::var("DB_URL").expect("a Postgres URL").to_string());
-    db_cfg.manager = Some(ManagerConfig { recycling_method: RecyclingMethod::Fast });
-    let db_pool = db_cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls).unwrap();
+    db_cfg.manager = Some(ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
+    });
+    let db_pool = db_cfg
+        .create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)
+        .unwrap();
     db_pool
         .get()
         .await
         .unwrap()
-        .batch_execute("CREATE TABLE IF NOT EXISTS api_request_logs (
+        .batch_execute(
+            "CREATE TABLE IF NOT EXISTS api_request_logs (
     id SERIAL PRIMARY KEY,
     request JSONB NOT NULL,
     response JSONB NOT NULL,
     ip INET NOT NULL,
     user_agent VARCHAR(512),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);")
+);",
+        )
         .await
         .unwrap();
     //#endregion
@@ -141,7 +155,10 @@ pub async fn main() -> std::io::Result<()> {
             .build()
             .expect("a successfully built client");
 
-        let app_state = AppState { client, db_pool: db_pool.clone() };
+        let app_state = AppState {
+            client,
+            db_pool: db_pool.clone(),
+        };
 
         App::new()
             .app_data(web::Data::new(app_state))
