@@ -1,8 +1,10 @@
 use actix_files::NamedFile;
-use actix_web::{get, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
-use reqwest::Client;
+use actix_web::{get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::error::ErrorBadRequest;
+use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -28,23 +30,25 @@ mod chat {
         content: String,
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct RequestPayload {
         model: Option<String>,
         messages: Vec<ChatCompletionMessage>,
         stream: Option<bool>,
     }
 
-    #[derive(Deserialize, Debug)]
-    pub struct Test {
-        foo: String,
-    }
-
     pub async fn completions(
         data: web::Data<AppState>,
         body: web::Json<RequestPayload>,
+        req: HttpRequest
     ) -> Result<impl Responder, Box<dyn std::error::Error>> {
         // let messages = serde_json::to_string(&body.messages)?;
+
+        if let Some(peer_addr) = req.peer_addr() {
+            println!("Address: {:?}", peer_addr.ip().to_string());
+        }
+
+        println!("{:?}", req.headers());
 
         let res = data
             .client
@@ -55,29 +59,66 @@ mod chat {
                 stream: Some(false),
             })
             .send()
-            .await?;
-        let status = res.status();
-        let text = res.text().await?;
-        println!("RES TEXT: {:#?}", text);
-        Ok(text)
+            .await?
+            .json::<serde_json::Value>().await?;
+
+        let conn = data.db_pool.get().await.map_err(|e| {
+            eprintln!("Failed to get DB connection: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+        let peer_ip = req.peer_addr()
+            .ok_or_else(|| ErrorBadRequest("Client IP address not available"))?
+            .ip();
+
+        let user_agent = req.headers()
+            .get("user-agent")
+            .map(|v| v.to_str().ok());
+
+        let qr = conn.query("INSERT INTO api_request_logs (request, response, ip, user_agent) VALUES ($1, $2, $3, $4)", &[&serde_json::to_value(body.into_inner())?, &res, &peer_ip, &user_agent]).await;
+        println!("{:#?}", qr);
+
+        Ok(web::Json(res))
     }
 }
 
 struct AppState {
     client: Client,
+    db_pool: Pool
 }
 
 #[actix_web::main]
 pub async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
-    use reqwest::header;
 
-    HttpServer::new(|| {
+    //#region DB setup
+    let mut db_cfg = Config::new();
+    db_cfg.url = Some(std::env::var("DB_URL").expect("a Postgres URL").to_string());
+    db_cfg.manager = Some(ManagerConfig { recycling_method: RecyclingMethod::Fast });
+    let db_pool = db_cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls).unwrap();
+    db_pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute("CREATE TABLE IF NOT EXISTS api_request_logs (
+    id SERIAL PRIMARY KEY,
+    request JSONB NOT NULL,
+    response JSONB NOT NULL,
+    ip INET NOT NULL,
+    user_agent VARCHAR(512),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);")
+        .await
+        .unwrap();
+    //#endregion
+
+    HttpServer::new(move || {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/json"),
         );
+
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
         token.set_sensitive(true);
@@ -86,7 +127,8 @@ pub async fn main() -> std::io::Result<()> {
             .default_headers(headers)
             .build()
             .expect("a successfully built client");
-        let app_state = AppState { client };
+
+        let app_state = AppState { client, db_pool: db_pool.clone() };
 
         App::new()
             .app_data(web::Data::new(app_state))
