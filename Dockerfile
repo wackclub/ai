@@ -13,7 +13,7 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy your source code
 COPY src ./src
-COPY static ./templates
+COPY templates ./templates
 
 # Build the actual application
 RUN cargo build --release
@@ -28,7 +28,6 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Copy the build artifact and static files from the builder stage
 COPY --from=builder /usr/src/app/target/release/ai .
 COPY --from=builder /usr/src/app/templates ./templates
 
