@@ -13,7 +13,7 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy your source code
 COPY src ./src
-COPY static ./static
+COPY static ./templates
 
 # Build the actual application
 RUN cargo build --release
@@ -30,7 +30,7 @@ WORKDIR /app
 
 # Copy the build artifact and static files from the builder stage
 COPY --from=builder /usr/src/app/target/release/ai .
-COPY --from=builder /usr/src/app/static ./static
+COPY --from=builder /usr/src/app/templates ./templates
 
 # Set the startup command
 ENV KEY=""
