@@ -1,10 +1,3 @@
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
-
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
-
 use actix_files::NamedFile;
 use actix_web::{get, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
 use reqwest::Client;
@@ -103,7 +96,7 @@ pub async fn main() -> std::io::Result<()> {
             .route("/hey", web::get().to(manual_hello))
             .wrap(Logger::default())
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 8080))?
     .run()
     .await
 }
