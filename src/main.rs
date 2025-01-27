@@ -5,10 +5,23 @@ use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use minijinja::{Environment, context, path_loader};
 
 #[get("/")]
-async fn index() -> impl Responder {
-    NamedFile::open_async("./static/index.html").await
+async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    let conn = data.db_pool.get().await.map_err(|e| {
+        eprintln!("Failed to get DB connection: {:?}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    let sum: f32 = conn.query("SELECT SUM((response->'usage'->>'total_tokens')::real) FROM api_request_logs;", &[]).await?[0].get("sum");
+    println!("{:#?}", sum as i32);
+
+    let mut env = Environment::new();
+    env.set_loader(path_loader("templates"));
+    let tmpl = env.get_template("index.html")?;
+    let page = tmpl.render(context!(total_tokens => (sum as i32)))?;
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(page))
 }
 
 #[post("/echo")]
