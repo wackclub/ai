@@ -37,7 +37,7 @@ async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std:
     let mut env = Environment::new();
     env.set_loader(path_loader("templates"));
     let tmpl = env.get_template("index.jinja")?;
-    let page = tmpl.render(context!(total_tokens => (sum as i32)))?;
+    let page = tmpl.render(context!(total_tokens => (sum as i32), model => std::env::var("COMPLETIONS_MODEL")?))?;
 
     Ok(HttpResponse::Ok().content_type("text/html").body(page))
 }
