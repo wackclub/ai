@@ -1,13 +1,23 @@
 use actix_files::NamedFile;
 use actix_web::error::ErrorBadRequest;
 use actix_web::{
-    get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    get, middleware::Logger, post, web::{self, Bytes}, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use minijinja::{context, path_loader, Environment};
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use futures::stream::BoxStream as _;
+use reqwest_streams::JsonStreamResponse as _;
+use futures::StreamExt;
+use async_stream::stream;
+
+fn remove_field(value: &mut serde_json::Value, key: &str) {
+    if let serde_json::Value::Object(ref mut map) = value {
+        map.remove(key);
+    }
+}
 
 #[get("/")]
 async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std::error::Error>> {
