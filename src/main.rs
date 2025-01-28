@@ -53,7 +53,6 @@ async fn manual_hello() -> impl Responder {
 
 mod chat {
     use super::*;
-    static COMPLETIONS_URL: &str = "https://api.deepseek.com/chat/completions";
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ChatCompletionMessage {
