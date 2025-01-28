@@ -99,7 +99,7 @@ mod chat {
                     match item {
                         Ok(mut val) => {
                             // Save to DB
-                            if !cfg!(debug_assertions) { log_reqres(data.clone(), body.clone(), req.clone(), val.clone()) }
+                            log_reqres(data.clone(), body.clone(), req.clone(), val.clone());
 
                             remove_field(&mut val, "usage");
                             println!("val: {:#?}", val);
@@ -115,7 +115,7 @@ mod chat {
                         Err(e) => yield Err::<Bytes, _>(e.into()),
                     }
                     // Force flush after each chunk
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                    //tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                 }
             };
 
@@ -127,6 +127,7 @@ mod chat {
                 .json::<serde_json::Value>()
                 .await?;
             println!("non-streaming resp: {:#?}", res_json);
+            log_reqres(data.clone(), body.clone(), req.clone(), res_json.clone());
             
             remove_field(&mut res_json, "usage");
             Ok(HttpResponse::Ok()
@@ -151,6 +152,7 @@ mod chat {
             .and_then(|v| v.to_str().ok())
             .map(String::from);
 
+        println!("Spawning log task");
         tokio::task::spawn(async move {
             let conn = match data.db_pool.get().await {
                 Ok(c) => c,
