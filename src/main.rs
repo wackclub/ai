@@ -53,7 +53,6 @@ async fn manual_hello() -> impl Responder {
 
 mod chat {
     use super::*;
-    static COMPLETIONS_URL: &str = "https://api.deepseek.com/chat/completions";
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ChatCompletionMessage {
@@ -81,35 +80,101 @@ mod chat {
 
         println!("{:?}", req.headers());
 
-        let res = data
+        let mut res = data
             .client
-            .post(COMPLETIONS_URL)
+            .post(std::env::var("COMPLETIONS_URL").unwrap())
             .json(&RequestPayload {
-                model: Some("deepseek-chat".to_string()),
+                model: Some(std::env::var("COMPLETIONS_MODEL").unwrap().to_string()),
                 messages: body.messages.clone(),
-                stream: Some(false),
+                stream: body.stream,
             })
             .send()
-            .await?
-            .json::<serde_json::Value>()
             .await?;
 
-        let conn = data.db_pool.get().await.map_err(|e| {
-            eprintln!("Failed to get DB connection: {:?}", e);
-            actix_web::error::ErrorInternalServerError("Database error")
-        })?;
+        if body.stream == Some(true) {
+            let mut stream_res = res.json_array_stream::<serde_json::Value>(64 * 16);
+            
+            let processed_stream = stream! {
+                while let Some(item) = stream_res.next().await {
+                    match item {
+                        Ok(mut val) => {
+                            // Save to DB
+                            if !cfg!(debug_assertions) { log_reqres(data.clone(), body.clone(), req.clone(), val.clone()) }
 
-        let peer_ip = req
-            .peer_addr()
-            .ok_or_else(|| ErrorBadRequest("Client IP address not available"))?
-            .ip();
+                            remove_field(&mut val, "usage");
+                            println!("val: {:#?}", val);
 
-        let user_agent = req.headers().get("user-agent").map(|v| v.to_str().ok());
+                            match serde_json::to_vec(&val) {
+                                Ok(mut bytes) => {
+                                    bytes.extend(b"\n");
+                                    yield Ok::<Bytes, Box<dyn std::error::Error>>(Bytes::from(bytes));
+                                },
+                                Err(e) => yield Err::<Bytes, _>(e.into()),
+                            }
+                        },
+                        Err(e) => yield Err::<Bytes, _>(e.into()),
+                    }
+                    // Force flush after each chunk
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                }
+            };
 
-        let qr = conn.query("INSERT INTO api_request_logs (request, response, ip, user_agent) VALUES ($1, $2, $3, $4)", &[&serde_json::to_value(body.into_inner())?, &res, &peer_ip, &user_agent]).await;
-        println!("{:#?}", qr);
+            return Ok(HttpResponse::Ok()
+                .content_type("application/json")
+                .streaming(Box::pin(processed_stream)));
+        } else {
+            let mut res_json = res
+                .json::<serde_json::Value>()
+                .await?;
+            println!("non-streaming resp: {:#?}", res_json);
+            
+            remove_field(&mut res_json, "usage");
+            Ok(HttpResponse::Ok()
+                .content_type("application/json")
+                .json(res_json))
+        }
+    }
 
-        Ok(web::Json(res))
+    fn log_reqres(
+        data: web::Data<AppState>,
+        body: RequestPayload,
+        req: HttpRequest,
+        res: serde_json::Value
+    ) {
+        // Extract needed values from HttpRequest before moving into async block
+        let peer_ip = req.peer_addr()
+            .map(|a| a.ip())
+            .unwrap_or_else(|| "0.0.0.0".parse().unwrap());
+        
+        let user_agent = req.headers()
+            .get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+
+        tokio::task::spawn(async move {
+            let conn = match data.db_pool.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Failed to get DB connection: {}", e);
+                    return;
+                }
+            };
+
+            let body_value = match serde_json::to_value(body/*.into_inner()*/) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Failed to serialize body: {}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = conn.execute(
+                "INSERT INTO api_request_logs (request, response, ip, user_agent) VALUES ($1, $2, $3, $4)",
+                &[&body_value, &res, &peer_ip, &user_agent]
+            ).await {
+                eprintln!("Failed to insert log: {}", e);
+            }
+        });
     }
 }
 
