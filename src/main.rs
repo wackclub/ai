@@ -1,17 +1,22 @@
+use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_web::error::ErrorBadRequest;
 use actix_web::{
-    get, middleware::Logger, post, web::{self, Bytes}, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    get,
+    middleware::Logger,
+    post,
+    web::{self, Bytes},
+    App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
+use async_stream::stream;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use futures::stream::BoxStream as _;
+use futures::StreamExt;
 use minijinja::{context, path_loader, Environment};
 use reqwest::{header, Client};
+use reqwest_streams::JsonStreamResponse as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use futures::stream::BoxStream as _;
-use reqwest_streams::JsonStreamResponse as _;
-use futures::StreamExt;
-use async_stream::stream;
 
 fn remove_field(value: &mut serde_json::Value, key: &str) {
     if let serde_json::Value::Object(ref mut map) = value {
@@ -37,7 +42,9 @@ async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std:
     let mut env = Environment::new();
     env.set_loader(path_loader("templates"));
     let tmpl = env.get_template("index.jinja")?;
-    let page = tmpl.render(context!(total_tokens => (sum as i32), model => std::env::var("COMPLETIONS_MODEL")?))?;
+    let page = tmpl.render(
+        context!(total_tokens => (sum as i32), model => std::env::var("COMPLETIONS_MODEL")?),
+    )?;
 
     Ok(HttpResponse::Ok().content_type("text/html").body(page))
 }
@@ -93,7 +100,7 @@ mod chat {
 
         if body.stream == Some(true) {
             let mut stream_res = res.json_array_stream::<serde_json::Value>(64 * 16);
-            
+
             let processed_stream = stream! {
                 while let Some(item) = stream_res.next().await {
                     match item {
@@ -123,12 +130,10 @@ mod chat {
                 .content_type("application/json")
                 .streaming(Box::pin(processed_stream)));
         } else {
-            let mut res_json = res
-                .json::<serde_json::Value>()
-                .await?;
+            let mut res_json = res.json::<serde_json::Value>().await?;
             println!("non-streaming resp: {:#?}", res_json);
             log_reqres(data.clone(), body.clone(), req.clone(), res_json.clone());
-            
+
             remove_field(&mut res_json, "usage");
             Ok(HttpResponse::Ok()
                 .content_type("application/json")
@@ -140,14 +145,16 @@ mod chat {
         data: web::Data<AppState>,
         body: RequestPayload,
         req: HttpRequest,
-        res: serde_json::Value
+        res: serde_json::Value,
     ) {
         // Extract needed values from HttpRequest before moving into async block
-        let peer_ip = req.peer_addr()
+        let peer_ip = req
+            .peer_addr()
             .map(|a| a.ip())
             .unwrap_or_else(|| "0.0.0.0".parse().unwrap());
-        
-        let user_agent = req.headers()
+
+        let user_agent = req
+            .headers()
             .get("user-agent")
             .and_then(|v| v.to_str().ok())
             .map(String::from);
@@ -162,7 +169,7 @@ mod chat {
                 }
             };
 
-            let body_value = match serde_json::to_value(body/*.into_inner()*/) {
+            let body_value = match serde_json::to_value(body /*.into_inner()*/) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("Failed to serialize body: {}", e);
@@ -223,6 +230,8 @@ pub async fn main() -> std::io::Result<()> {
             header::HeaderValue::from_static("application/json"),
         );
 
+        let cors = Cors::default().allow_any_origin();
+
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
         token.set_sensitive(true);
@@ -244,6 +253,7 @@ pub async fn main() -> std::io::Result<()> {
             .route("/chat/completions", web::post().to(chat::completions))
             .route("/hey", web::get().to(manual_hello))
             .wrap(Logger::default())
+            .wrap(cors)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
