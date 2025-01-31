@@ -230,7 +230,7 @@ pub async fn main() -> std::io::Result<()> {
             header::HeaderValue::from_static("application/json"),
         );
 
-        let cors = Cors::default().allow_any_origin();
+        let cors = Cors::permissive().send_wildcard();
 
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
