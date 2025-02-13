@@ -230,7 +230,9 @@ pub async fn main() -> std::io::Result<()> {
             header::HeaderValue::from_static("application/json"),
         );
 
-        let cors = Cors::permissive().send_wildcard();
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allowed_methods(vec!["GET", "POST"]);
 
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
@@ -247,13 +249,13 @@ pub async fn main() -> std::io::Result<()> {
         };
 
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(app_state))
             .service(index)
             .service(echo)
             .route("/chat/completions", web::post().to(chat::completions))
             .route("/hey", web::get().to(manual_hello))
             .wrap(Logger::default())
-            .wrap(cors)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
