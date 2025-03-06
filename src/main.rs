@@ -1,4 +1,3 @@
-use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_web::error::ErrorBadRequest;
 use actix_web::{
@@ -230,10 +229,6 @@ pub async fn main() -> std::io::Result<()> {
             header::HeaderValue::from_static("application/json"),
         );
 
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allowed_methods(vec!["GET", "POST"]);
-
         let bearer = format!("Bearer {}", std::env::var("KEY").expect("an API key"));
         let mut token = header::HeaderValue::from_str(&bearer).unwrap();
         token.set_sensitive(true);
@@ -249,7 +244,7 @@ pub async fn main() -> std::io::Result<()> {
         };
 
         App::new()
-            .wrap(cors)
+            .wrap(actix_cors::Cors::permissive())
             .app_data(web::Data::new(app_state))
             .service(index)
             .service(echo)
