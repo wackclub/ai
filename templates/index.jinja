@@ -43,12 +43,36 @@
     </section>
 
     <section>
+      <h2>API Parameters</h2>
+      <p>The API accepts all standard OpenAI-style parameters for chat completions:</p>
+      <ul>
+        <li><code>messages</code> - Array of message objects with role and content</li>
+        <li><code>model</code> - (Ignored) Model is set server-side</li>
+        <li><code>temperature</code> - Controls randomness (0.0 to 2.0)</li>
+        <li><code>max_completion_tokens</code> - Maximum number of tokens to generate</li>
+        <li><code>top_p</code> - Controls diversity via nucleus sampling</li>
+        <li><code>frequency_penalty</code> - Reduces repetition of token sequences</li>
+        <li><code>presence_penalty</code> - Reduces repetition of tokens</li>
+        <li><code>stream</code> - Set to true for streaming responses</li>
+        <li><code>stop</code> - Array of tokens at which to stop generation</li>
+        <li><code>response_format</code> - Format of the response (e.g., JSON mode)</li>
+        <li><code>seed</code> - Integer for random seed to enable deterministic sampling</li>
+        <li><code>tools</code> - List of tools the model may call</li>
+        <li><code>tool_choice</code> - Controls which (if any) tool is called</li>
+        <li><code>include_reasoning</code> - Set to true to include reasoning in responses (reasoning models only)</li>
+        <li><code>reasoning_format</code> - Format for reasoning output (reasoning models only)</li>
+      </ul>
+      <p><strong>Note:</strong> The <code>model</code> parameter is ignored as the model is configured server-side.</p>
+      <p><strong>Note:</strong> Reasoning parameters (<code>include_reasoning</code> and <code>reasoning_format</code>) only work when the currently set model is a reasoning model.</p>
+    </section>
+
+    <section>
 	<h2>Terms</h2>
 	<p>
 	  You must be a teenager in the <a href="https://hackclub.com/slack">Hack Club Slack</a>.
 	  All requests and responses are logged to prevent abuse.
-	  Projects only - no personal use. This means you can't use it in Cursor or anything similar for the moment!
-	  Abuse means this will get shut down - we're a nonprofit funded by donations.
+	  Projects only — no personal use. This means you can't use it in Cursor or anything similar for the moment!
+	  Abuse means this will get shut down — we're a nonprofit funded by donations.
 	</p>
     </section>
   </body>
