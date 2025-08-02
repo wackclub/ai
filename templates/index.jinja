@@ -61,9 +61,11 @@
         <li><code>tool_choice</code> - Controls which (if any) tool is called</li>
         <li><code>include_reasoning</code> - Set to true to include reasoning in responses (reasoning models only)</li>
         <li><code>reasoning_format</code> - Format for reasoning output (reasoning models only)</li>
+        <li><code>reasoning_effort</code> - Controls the reasoning effort for Qwen models (none or default)</li>
       </ul>
       <p><strong>Note:</strong> The <code>model</code> parameter is ignored as the model is configured server-side.</p>
       <p><strong>Note:</strong> Reasoning parameters (<code>include_reasoning</code> and <code>reasoning_format</code>) only work when the currently set model is a reasoning model.</p>
+      <p><strong>Note:</strong> The <code>reasoning_effort</code> parameter only works for Qwen models. Use "none" for fast responses without reasoning or "default" for normal reasoning effort.</p>
     </section>
 
     <section>

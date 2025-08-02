@@ -126,6 +126,8 @@ mod chat {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub reasoning_format: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        pub reasoning_effort: Option<String>, // Added reasoning_effort parameter
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub seed: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub stop: Option<Vec<String>>,
@@ -166,6 +168,7 @@ mod chat {
         println!("  Frequency penalty: {:?}", body.frequency_penalty);
         println!("  Response format: {:?}", body.response_format);
         println!("  Reasoning format: {:?}", body.reasoning_format);
+        println!("  Reasoning effort: {:?}", body.reasoning_effort); // Added reasoning_effort logging
         println!("  Tools: {:?}", body.tools.as_ref().map(|t| t.len()));
         println!("  Tool choice: {:?}", body.tool_choice);
         println!("  Include reasoning: {:?}", body.include_reasoning);
