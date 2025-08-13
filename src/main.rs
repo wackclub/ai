@@ -6,19 +6,19 @@ mod routes;
 use std::net::SocketAddr;
 use std::{collections::HashSet, sync::LazyLock};
 
-use utoipa::OpenApi;
-use dotenvy_macro::dotenv;
-use tracing_subscriber::fmt;
-use tokio::net::TcpListener;
 use axum::http::header;
-use reqwest::{
-    Client,
-    header::{HeaderMap, HeaderValue},
-};
 use axum::{
     Router, middleware,
     routing::{get, post},
 };
+use dotenvy_macro::dotenv;
+use reqwest::{
+    Client,
+    header::{HeaderMap, HeaderValue},
+};
+use tokio::net::TcpListener;
+use tracing_subscriber::fmt;
+use utoipa::OpenApi;
 
 use crate::{
     docs::handlers::{docs, openapi_axle},
@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/hey", get(manual_hello));
 
     let state = metrics::database::MetricsState::init().await;
-    
+
     run_migrations(&state).await;
     let app = chat_router
         .merge(docs_router)
@@ -144,17 +144,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_migrations(state: &metrics::database::MetricsState) {
     if let Some(pool) = &state.db {
         if let Ok(client) = pool.get().await {
-            let _ = client.execute(
-                "CREATE TABLE IF NOT EXISTS api_logs (
+            let _ = client
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS api_logs (
                     id SERIAL PRIMARY KEY,
                     request JSONB NOT NULL,
                     response JSONB NOT NULL,
                     ip INET NOT NULL,
                     tokens INTEGER,
                     created_at TIMESTAMPTZ DEFAULT NOW()
-                )", 
-                &[]
-            ).await;
+                )",
+                    &[],
+                )
+                .await;
         }
     }
 }

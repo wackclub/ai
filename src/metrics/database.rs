@@ -1,17 +1,20 @@
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicI64, Ordering},
+};
 
-use tracing::error;
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime::Tokio1};
 use serde_json::Value;
 use tokio_postgres::NoTls;
-use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod};
+use tracing::error;
 
 use crate::DATABASE_URL;
 
 #[derive(Clone)]
 pub struct MetricsState {
     pub db: Option<Pool>,
-    pub tokens: std::sync::Arc<AtomicI64>,
+    pub tokens: Arc<AtomicI64>,
 }
 
 impl MetricsState {
@@ -21,14 +24,12 @@ impl MetricsState {
         cfg.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
-        
-        match cfg.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls) {
-            Ok(pool) => {
-                Self {
-                    db: Some(pool),
-                    tokens: std::sync::Arc::new(AtomicI64::new(0)),
-                }
-            }
+
+        match cfg.create_pool(Some(Tokio1), NoTls) {
+            Ok(pool) => Self {
+                db: Some(pool),
+                tokens: std::sync::Arc::new(AtomicI64::new(0)),
+            },
             Err(e) => {
                 error!("Failed to create database pool: {}", e);
                 Self {
@@ -82,6 +83,6 @@ pub fn extract_tokens(response: &Value, is_streaming: bool) -> Option<i32> {
     } else {
         response.get("usage")?
     };
-    
+
     usage.get("total_tokens")?.as_i64().map(|t| t as i32)
 }

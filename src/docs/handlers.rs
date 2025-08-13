@@ -1,9 +1,9 @@
-use maud::html;
-use utoipa::{OpenApi, openapi::ServerBuilder};
 use axum::{
     Json,
     response::{Html, IntoResponse},
 };
+use maud::html;
+use utoipa::{OpenApi, openapi::ServerBuilder};
 
 use crate::{ApiDoc, PROD_DOMAIN};
 

@@ -1,8 +1,8 @@
-use maud::html;
 use axum::{
     extract::State,
     response::{Html, IntoResponse},
 };
+use maud::html;
 
 use crate::{DEFAULT_MODEL, metrics::database::MetricsState};
 
@@ -16,23 +16,88 @@ use crate::{DEFAULT_MODEL, metrics::database::MetricsState};
 )]
 pub async fn index(State(state): State<MetricsState>) -> impl IntoResponse {
     let mut total: i64 = 0;
+
     if let Some(pool) = &state.db {
         if let Ok(client) = pool.get().await {
-            if let Ok(rows) = client.query("SELECT COALESCE(SUM(tokens), 0) AS sum FROM api_logs", &[]).await {
+            if let Ok(rows) = client
+                .query("SELECT COALESCE(SUM(tokens), 0) AS sum FROM api_logs", &[])
+                .await
+            {
                 if let Some(row) = rows.first() {
                     total = row.get::<_, i64>("sum");
                 }
             }
         }
     }
-    Html(html!{
-        html lang="en"{
-            head{meta charset="UTF-8"{} meta name="viewport" content="width=device-width, initial-scale=1.0"{} title{"Hack Club | AI"}}
-            body{
-                header{h1{"ai.hackclub.com"} p{"An experimental service providing unlimited " code{"/chat/completions"} " for free, for teens in " a href="https://hackclub.com/" target="_blank"{"Hack Club"} ". No API key needed."} p{b{(total)}" tokens processed since January 2025. Current model: " b{code{(DEFAULT_MODEL)}}} p{"Open source at " a href="https://github.com/hackclub/ai"{"github.com/hackclub/ai"} "!"}}
-                section{h2{"Usage"} h3{"Chat Completions"} pre{code{"curl -X POST https://ai.hackclub.com/chat/completions \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\n        \"messages\": [{\"role\": \"user\", \"content\": \"Tell me a joke!\"}]\n    }'"}} h3{"Get Current Model"} p{"To get current model:"} pre{code{"curl https://ai.hackclub.com/model"}} p{"Example response: " code{(DEFAULT_MODEL)}} p{a href="/docs"{"Docs"}}}
-                section{h2{"Terms"} p{"You must be a teenager in the " a href="https://hackclub.com/slack"{"Hack Club Slack"} ". All requests and responses are logged to prevent abuse. Projects only - no personal use. This means you can't use it in Cursor or anything similar for the moment! Abuse means this will get shut down - we're a nonprofit funded by donations."}}
+
+    Html(
+        html! {
+            html lang="en" {
+                head {
+                    meta charset="UTF-8" {}
+                    meta name="viewport" content="width=device-width, initial-scale=1.0" {}
+                    title { "Hack Club | AI" }
+                }
+                body {
+                    header {
+                        h1 { "ai.hackclub.com" }
+                        p {
+                            "An experimental service providing unlimited "
+                            code { "/chat/completions" }
+                            " for free, for teens in "
+                            a href="https://hackclub.com/" target="_blank" { "Hack Club" }
+                            ". No API key needed."
+                        }
+                        p {
+                            b { (total) }
+                            " tokens processed since January 2025. Current model: "
+                            b { code { (DEFAULT_MODEL) } }
+                        }
+                        p {
+                            "Open source at "
+                            a href="https://github.com/hackclub/ai" { "github.com/hackclub/ai" }
+                            "!"
+                        }
+                    }
+                    section {
+                        h2 { "Usage" }
+                        h3 { "Chat Completions" }
+                        pre {
+                            code {
+                                "curl -X POST https://ai.hackclub.com/chat/completions \\\n"
+                                "    -H \"Content-Type: application/json\" \\\n"
+                                "    -d '{\n"
+                                "        \"messages\": [{\"role\": \"user\", \"content\": \"Tell me a joke!\"}]\n"
+                                "    }'"
+                            }
+                        }
+                        h3 { "Get Current Model" }
+                        p { "To get current model:" }
+                        pre {
+                            code { "curl https://ai.hackclub.com/model" }
+                        }
+                        p {
+                            "Example response: "
+                            code { (DEFAULT_MODEL) }
+                        }
+                        p {
+                            a href="/docs" { "Docs" }
+                        }
+                    }
+                    section {
+                        h2 { "Terms" }
+                        p {
+                            "You must be a teenager in the "
+                            a href="https://hackclub.com/slack" { "Hack Club Slack" }
+                            ". All requests and responses are logged to prevent abuse. "
+                            "Projects only - no personal use. This means you can't use it in Cursor "
+                            "or anything similar for the moment! Abuse means this will get shut down "
+                            "- we're a nonprofit funded by donations."
+                        }
+                    }
+                }
             }
         }
-    }.into_string())
+        .into_string(),
+    )
 }

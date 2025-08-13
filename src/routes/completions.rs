@@ -1,7 +1,5 @@
 use std::net::SocketAddr;
 
-use tracing::error;
-use serde_json::Value;
 use axum::http::header;
 use axum::{
     body::Body,
@@ -10,13 +8,19 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use serde_json::Value;
+use tracing::error;
 
+use crate::metrics::database::extract_tokens;
 use crate::{
     CLIENT, COMPLETIONS_URL, DEFAULT_MODEL, delegates::error::APIError, is_allowed_model,
     metrics::database::MetricsState,
 };
 
-fn build_response_with_content_type(content_type: header::HeaderValue, body: impl Into<Body>) -> Response {
+fn build_response_with_content_type(
+    content_type: header::HeaderValue,
+    body: impl Into<Body>,
+) -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type)
@@ -31,7 +35,7 @@ async fn log_request_response(
     ip: std::net::IpAddr,
     is_streaming: bool,
 ) {
-    let tokens = crate::metrics::database::extract_tokens(response, is_streaming);
+    let tokens = extract_tokens(response, is_streaming);
     state.log_request(request, response, ip, tokens).await;
 }
 
