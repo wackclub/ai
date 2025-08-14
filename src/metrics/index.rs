@@ -4,7 +4,7 @@ use axum::{
 };
 use maud::html;
 
-use crate::{DEFAULT_MODEL, metrics::database::MetricsState};
+use crate::{ALLOWED_MODELS, DEFAULT_MODEL, metrics::database::MetricsState};
 
 #[utoipa::path(
     get,
@@ -50,8 +50,17 @@ pub async fn index(State(state): State<MetricsState>) -> impl IntoResponse {
                         }
                         p {
                             b { (total) }
-                            " tokens processed since January 2025. Current model: "
+                            " tokens processed since January 2025. Default model: "
                             b { code { (DEFAULT_MODEL) } }
+                        }
+                        p {
+                            "Available models: "
+                            b {
+                                @for (i, model) in ALLOWED_MODELS.split(',').enumerate() {
+                                    @if i > 0 { ", " }
+                                    code { (model.trim()) }
+                                }
+                            }
                         }
                         p {
                             "Open source at "
@@ -71,17 +80,14 @@ pub async fn index(State(state): State<MetricsState>) -> impl IntoResponse {
                                 "    }'"
                             }
                         }
-                        h3 { "Get Current Model" }
-                        p { "To get current model:" }
+                        h3 { "Get Current Models" }
+                        p { "To get current models:" }
                         pre {
                             code { "curl https://ai.hackclub.com/model" }
                         }
                         p {
                             "Example response: "
-                            code { (DEFAULT_MODEL) }
-                        }
-                        p {
-                            a href="/docs" { "Docs" }
+                            code { "qwen/qwen3-32b,openai/gpt-oss-120b,openai/gpt-oss-20b,meta-llama/llama-4-maverick-17b-128e-instruct" }
                         }
                     }
                     section {
@@ -93,6 +99,12 @@ pub async fn index(State(state): State<MetricsState>) -> impl IntoResponse {
                             "Projects only - no personal use. This means you can't use it in Cursor "
                             "or anything similar for the moment! Abuse means this will get shut down "
                             "- we're a nonprofit funded by donations."
+                        }
+                    }
+                    section {
+                        h2 { "Docs" }
+                        p {
+                            a href="/docs" { "Link" }
                         }
                     }
                 }

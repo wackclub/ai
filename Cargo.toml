@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-maud = { version = "0.26.0" }
 futures = "0.3.31"
-tracing = { version = "0.1.41", features = ["async-await"] }
-utoipa = { version = "5.3.1", features = ["axum_extras"] }
-serde_json = { version = "1.0.141", features = ["alloc"] }
+tracing = { version = "0.1.41" }
+serde_json = { version = "1.0.142" }
 dotenvy_macro = { version = "0.15.7" }
-tokio-postgres = { version = "0.7.13", features = ["with-serde_json-1"] }
-deadpool-postgres = { version = "0.14.0" }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+deadpool-postgres = { version = "0.14.1" }
+tracing-subscriber = { version = "0.3.19" }
+maud = { version = "0.26.0", features = ["axum"] }
 serde = { version = "1.0.219", features = ["derive"] }
+utoipa = { version = "5.4.0", features = ["axum_extras"] }
+tokio-postgres = { version = "0.7.13", features = ["with-serde_json-1"] }
 axum = { version = "0.8.4", default-features = false, features = ["json", "tokio", "macros", "http2"] }
-tokio = { version = "1.47.0", default-features = false, features = ["net", "io-util", "rt-multi-thread", "time", "sync", "macros"] }
-reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1.47.1", default-features = false, features = ["net", "rt-multi-thread", "macros"] }
 
 [profile.release]
 lto = "fat"

@@ -11,7 +11,7 @@ pub async fn docs() -> impl IntoResponse {
     Html(html! {
 		html {
 			head {
-				title { "Hack Club AI Proxy Documentation" }
+				title { "Hack Club AI Service" }
 				script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference" {}
 			}
 			body {

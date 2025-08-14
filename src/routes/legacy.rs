@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
     get,
     path = "/model",
     responses(
-        (status = 200, description = "Comma-delimited allowed model list", body = String)
+        (status = 200, description = "Comma-delimited allowed model list", content_type = "text/plain")
     ),
     tag = "Legacy"
 )]
@@ -16,7 +16,7 @@ pub async fn get_model() -> impl IntoResponse {
     get,
     path = "/echo",
     responses(
-        (status = 200, description = "Greeting message", body = String)
+        (status = 200, description = "Greeting message", content_type = "text/plain")
     ),
     tag = "Legacy"
 )]
@@ -28,7 +28,7 @@ pub async fn echo() -> impl IntoResponse {
     get,
     path = "/hey",
     responses(
-        (status = 200, description = "Hello message", body = String)
+        (status = 200, description = "Hello message", content_type = "text/plain")
     ),
     tag = "Legacy"
 )]

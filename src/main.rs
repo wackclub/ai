@@ -3,17 +3,17 @@ mod docs;
 mod metrics;
 mod routes;
 
-use std::net::SocketAddr;
-use std::{collections::HashSet, sync::LazyLock};
+use std::{collections::HashSet, net::SocketAddr, sync::LazyLock};
 
-use axum::http::header;
 use axum::{
-    Router, middleware,
+    Router,
+    http::header,
+    middleware,
     routing::{get, post},
 };
 use dotenvy_macro::dotenv;
 use reqwest::{
-    Client,
+    Client, StatusCode,
     header::{HeaderMap, HeaderValue},
 };
 use tokio::net::TcpListener;
@@ -21,8 +21,9 @@ use tracing_subscriber::fmt;
 use utoipa::OpenApi;
 
 use crate::{
+    delegates::error::APIError,
     docs::handlers::{docs, openapi_axle},
-    metrics::index::index,
+    metrics::{database::MetricsState, index::index},
     routes::{
         completions::{completions, validate_model},
         legacy::{echo, get_model, manual_hello},
@@ -30,34 +31,31 @@ use crate::{
 };
 
 pub(crate) const KEY: &str = dotenv!("KEY");
-pub(crate) const COMPLETIONS_URL: &str = dotenv!("COMPLETIONS_URL");
-pub(crate) const DATABASE_URL: &str = dotenv!("DATABASE_URL");
-pub(crate) const ALLOWED_MODELS: &str = dotenv!("ALLOWED_MODELS");
-pub(crate) const DEFAULT_MODEL: &str = dotenv!("DEFAULT_MODEL");
 pub(crate) const PORT: &str = dotenv!("PORT");
 pub(crate) const PROD_DOMAIN: &str = dotenv!("PROD_DOMAIN");
+pub(crate) const DATABASE_URL: &str = dotenv!("DATABASE_URL");
+pub(crate) const DEFAULT_MODEL: &str = dotenv!("DEFAULT_MODEL");
+pub(crate) const ALLOWED_MODELS: &str = dotenv!("ALLOWED_MODELS");
+pub(crate) const COMPLETIONS_URL: &str = dotenv!("COMPLETIONS_URL");
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        routes::completions::completions,
-    routes::legacy::get_model,
-    routes::legacy::echo,
-    routes::legacy::manual_hello,
+        routes::legacy::echo,
         metrics::index::index,
+        routes::legacy::get_model,
+        routes::legacy::manual_hello,
+        routes::completions::completions,
     ),
     tags(
-    (name = "Chat", description = "Chat completion endpoints"),
-    (name = "Legacy", description = "Legacy endpoints"),
-    (name = "Metrics", description = "Metrics and monitoring")
+        (name = "Legacy", description = "Legacy endpoints"),
+        (name = "Chat", description = "Chat completion endpoints"),
+        (name = "Metrics", description = "Metrics and monitoring")
     ),
     info(
-        title = "Hack Club AI Proxy",
         version = "0.0.1",
-        description = "Simple proxy for AI completions"
-    ),
-    servers(
-        (url = "https://ai.hackclub.com", description = "Production")
+        title = "Hack Club AI Service",
+        description = "Simple Groq proxy for AI completions"
     )
 )]
 struct ApiDoc;
@@ -116,15 +114,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/echo", get(echo))
         .route("/hey", get(manual_hello));
 
-    let state = metrics::database::MetricsState::init().await;
+    let state = MetricsState::init().await;
 
     run_migrations(&state).await;
     let app = chat_router
         .merge(docs_router)
         .merge(legacy_router)
         .fallback(|| async {
-            crate::delegates::error::APIError {
-                code: axum::http::StatusCode::NOT_FOUND,
+            APIError {
+                code: StatusCode::NOT_FOUND,
                 body: Some("Not Found"),
             }
         })
