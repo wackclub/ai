@@ -75,7 +75,12 @@ pub async fn validate_model(req: Request, next: Next) -> Result<Response, APIErr
 #[utoipa::path(
     post,
     path = "/chat/completions",
-    request_body = serde_json::Value,
+    request_body(
+        content = serde_json::Value,
+        example = json!({
+            "messages": [{"role": "user", "content": "Tell me a joke!"}]
+        })
+    ),
     responses(
         (status = 200, description = "Chat completion successful", body = serde_json::Value),
         (status = 400, description = "Bad request"),
