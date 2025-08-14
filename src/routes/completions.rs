@@ -1,75 +1,52 @@
 use std::net::SocketAddr;
 
-use axum::http::header;
 use axum::{
-    body::Body,
+    body::{Body, to_bytes},
     extract::{ConnectInfo, Json, Request, State},
-    http::{Method, StatusCode},
+    http::{header, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use serde_json::Value;
+use futures::StreamExt;
+use serde_json::{from_slice, Value};
 use tracing::error;
 
-use crate::metrics::database::extract_tokens;
 use crate::{
-    CLIENT, COMPLETIONS_URL, DEFAULT_MODEL, delegates::error::APIError, is_allowed_model,
-    metrics::database::MetricsState,
+    delegates::error::APIError, is_allowed_model, metrics::database::{extract_tokens, MetricsState},
+    CLIENT, COMPLETIONS_URL, DEFAULT_MODEL,
 };
-
-fn build_response_with_content_type(
-    content_type: header::HeaderValue,
-    body: impl Into<Body>,
-) -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .body(body.into())
-        .expect("building response body should be infallible")
-}
-
-async fn log_request_response(
-    state: &MetricsState,
-    request: &Value,
-    response: &Value,
-    ip: std::net::IpAddr,
-    is_streaming: bool,
-) {
-    let tokens = extract_tokens(response, is_streaming);
-    state.log_request(request, response, ip, tokens).await;
-}
 
 pub async fn validate_model(req: Request, next: Next) -> Result<Response, APIError> {
     let (parts, body) = req.into_parts();
-
-    let body_bytes = axum::body::to_bytes(body, usize::MAX)
+    
+    let bytes = to_bytes(body, usize::MAX)
         .await
         .map_err(|_| APIError {
             code: StatusCode::BAD_REQUEST,
             body: Some("Failed to read request body"),
         })?;
-
-    let mut json: Value = serde_json::from_slice(&body_bytes).map_err(|_| APIError {
-        code: StatusCode::BAD_REQUEST,
-        body: Some("Invalid JSON"),
-    })?;
-
-    let selected = json
+    
+    let mut json: Value = from_slice(&bytes)
+        .map_err(|_| APIError {
+            code: StatusCode::BAD_REQUEST,
+            body: Some("Invalid JSON"),
+        })?;
+    
+    let model = json
         .get("model")
         .and_then(Value::as_str)
         .filter(|&m| is_allowed_model(m))
-        .unwrap_or(DEFAULT_MODEL)
-        .to_string();
-    json["model"] = Value::String(selected);
-
-    let new_body = serde_json::to_vec(&json).map_err(|_| APIError {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        body: Some("Failed to serialize request"),
-    })?;
-
-    let req = Request::from_parts(parts, axum::body::Body::from(new_body));
-
-    Ok(next.run(req).await)
+        .unwrap_or(DEFAULT_MODEL);
+    
+    json["model"] = Value::String(model.to_string());
+    
+    let body = serde_json::to_vec(&json)
+        .map_err(|_| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            body: Some("Failed to serialize request"),
+        })?;
+    
+    Ok(next.run(Request::from_parts(parts, Body::from(body))).await)
 }
 
 #[utoipa::path(
@@ -94,111 +71,93 @@ pub async fn completions(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<Value>,
 ) -> impl IntoResponse {
-    let response = match CLIENT
+    let response = CLIENT
         .request(Method::POST, COMPLETIONS_URL)
         .json(&request)
         .send()
         .await
-    {
-        Ok(response) => response,
-        Err(e) => {
+        .map_err(|e| {
             error!("Failed to send request to Groq: {}", e);
-            return APIError {
+            APIError {
                 code: StatusCode::BAD_GATEWAY,
                 body: Some("Failed to connect to upstream service"),
             }
-            .into_response();
-        }
-    };
-
+        })?;
+    
     if !response.status().is_success() {
-        let status = response.status();
-        return APIError {
-            code: status,
+        return Err(APIError {
+            code: response.status(),
             body: Some("Upstream service error"),
-        }
-        .into_response();
+        });
     }
-
+    
     let content_type = response
         .headers()
         .get(header::CONTENT_TYPE)
         .cloned()
-        .unwrap();
-
+        .unwrap_or(header::HeaderValue::from_static("application/json"));
+    
     let is_streaming = request
         .get("stream")
-        .and_then(|v| v.as_bool())
+        .and_then(Value::as_bool)
         .unwrap_or(false);
-
+    
+    let ip = addr.ip();
+    
     if is_streaming {
-        use futures::StreamExt;
-
-        let ip = addr.ip();
-        let state_clone = state.clone();
-        let request_clone = request.clone();
-
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::new();
-        let mut final_usage: Option<Value> = None;
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    buffer.extend_from_slice(&bytes);
-
-                    let text = String::from_utf8_lossy(&bytes);
-                    for line in text.lines() {
-                        if let Some(json_part) = line.strip_prefix("data: ") {
-                            if json_part != "[DONE]" {
-                                if let Ok(parsed) = serde_json::from_str::<Value>(json_part) {
-                                    if let Some(x_groq) = parsed.get("x_groq") {
-                                        if x_groq.get("usage").is_some() {
-                                            final_usage = Some(parsed.clone());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        let mut usage_data = None;
+        
+        while let Some(Ok(chunk)) = stream.next().await {
+            buffer.extend_from_slice(&chunk);
+            
+            String::from_utf8_lossy(&chunk)
+                .lines()
+                .filter_map(|line| line.strip_prefix("data: "))
+                .filter(|&data| data != "[DONE]")
+                .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+                .filter(|json| json.get("x_groq").and_then(|x| x.get("usage")).is_some())
+                .for_each(|json| usage_data = Some(json));
+        }
+        
+        if let Some(final_response) = usage_data {
+            let tokens = extract_tokens(&final_response, true);
+            state.log_request(&request, &final_response, ip, tokens).await;
+        }
+        
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Body::from(buffer))
+            .unwrap())
+    } else {
+        let body = response
+            .text()
+            .await
+            .map_err(|e| {
+                error!("Failed to read response body: {}", e);
+                APIError {
+                    code: StatusCode::BAD_GATEWAY,
+                    body: Some("Failed to read upstream response"),
                 }
-                Err(_) => break,
-            }
-        }
-
-        if let Some(final_response) = final_usage {
-            log_request_response(&state_clone, &request_clone, &final_response, ip, true).await;
-        }
-
-        return build_response_with_content_type(content_type, buffer);
-    }
-
-    let response_body = match response.text().await {
-        Ok(body) => body,
-        Err(e) => {
-            error!("Failed to read response body: {e}");
-            return APIError {
-                code: StatusCode::BAD_GATEWAY,
-                body: Some("Failed to read upstream response"),
-            }
-            .into_response();
-        }
-    };
-
-    let response_json: Value = match serde_json::from_str(&response_body) {
-        Ok(json) => json,
-        Err(e) => {
-            error!("Failed to parse response JSON: {e}");
-            return APIError {
+            })?;
+        
+        let json: Value = serde_json::from_str(&body).map_err(|e| {
+            error!("Failed to parse response JSON: {}", e);
+            APIError {
                 code: StatusCode::BAD_GATEWAY,
                 body: Some("Invalid response from upstream service"),
             }
-            .into_response();
-        }
-    };
-
-    let ip = addr.ip();
-    log_request_response(&state, &request, &response_json, ip, false).await;
-
-    build_response_with_content_type(content_type, response_json.to_string())
+        })?;
+        
+        let tokens = extract_tokens(&json, false);
+        state.log_request(&request, &json, ip, tokens).await;
+        
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Body::from(body))
+            .unwrap())
+    }
 }
