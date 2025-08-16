@@ -1,29 +1,29 @@
-mod delegates;
 mod docs;
-mod metrics;
 mod routes;
+mod metrics;
+mod delegates;
 
-use std::{collections::HashSet, net::SocketAddr, sync::LazyLock};
+use std::{sync::LazyLock, net::SocketAddr, collections::HashSet};
 
+use utoipa::OpenApi;
+use dotenvy_macro::dotenv;
+use tracing_subscriber::fmt;
+use tokio::net::TcpListener;
 use axum::{
-    Router,
+    Router, middleware,
     http::header,
-    middleware,
     routing::{get, post},
 };
-use dotenvy_macro::dotenv;
 use reqwest::{
-    Client, StatusCode,
+    Client,
+    StatusCode,
     header::{HeaderMap, HeaderValue},
 };
-use tokio::net::TcpListener;
-use tracing_subscriber::fmt;
-use utoipa::OpenApi;
 
 use crate::{
     delegates::error::APIError,
     docs::handlers::{docs, openapi_axle},
-    metrics::{database::MetricsState, index::index},
+    metrics::{index::index, database::MetricsState},
     routes::{
         completions::{completions, validate_model},
         legacy::{echo, get_model, manual_hello},
@@ -48,13 +48,13 @@ pub(crate) const COMPLETIONS_URL: &str = dotenv!("COMPLETIONS_URL");
         routes::completions::completions,
     ),
     tags(
-        (name = "Legacy", description = "Legacy endpoints"),
         (name = "Chat", description = "Chat completion endpoints"),
+        (name = "Legacy", description = "Legacy endpoints"),
         (name = "Metrics", description = "Metrics and monitoring")
     ),
     info(
-        version = "0.0.1",
         title = "Hack Club AI Service",
+        version = "0.0.1",
         description = "Simple Groq proxy for AI completions"
     )
 )]

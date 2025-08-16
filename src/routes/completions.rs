@@ -31,13 +31,24 @@ pub async fn validate_model(req: Request, next: Next) -> Result<Response, APIErr
         body: Some("Invalid JSON"),
     })?;
 
-    let model = json
-        .get("model")
-        .and_then(Value::as_str)
-        .filter(|&m| is_allowed_model(m))
-        .unwrap_or(DEFAULT_MODEL);
-
-    json["model"] = Value::String(model.to_string());
+    if let Some(obj) = json.as_object_mut() {
+        if let Some(tier) = obj.get("service_tier").and_then(Value::as_str) {
+            if tier != "flex" && tier != "on_demand" {
+                obj.remove("service_tier");
+            }
+        } else {
+            obj.remove("service_tier");
+        }
+        
+        let needs_update = obj
+            .get("model")
+            .and_then(Value::as_str)
+            .map_or(true, |m| !is_allowed_model(m));
+        
+        if needs_update {
+            obj.insert("model".to_string(), Value::String(DEFAULT_MODEL.to_string()));
+        }
+    }
 
     let body = serde_json::to_vec(&json).map_err(|_| APIError {
         code: StatusCode::INTERNAL_SERVER_ERROR,
