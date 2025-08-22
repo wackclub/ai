@@ -1,29 +1,30 @@
-mod docs;
-mod routes;
-mod metrics;
 mod delegates;
+mod docs;
+mod metrics;
+mod routes;
 
-use std::{sync::LazyLock, net::SocketAddr, collections::HashSet};
+use std::{collections::HashSet, net::SocketAddr, sync::LazyLock, time::Duration};
 
-use utoipa::OpenApi;
-use dotenvy_macro::dotenv;
-use tracing_subscriber::fmt;
-use tokio::net::TcpListener;
 use axum::{
-    Router, middleware,
+    Router,
     http::header,
+    middleware,
     routing::{get, post},
 };
+use dotenvy_macro::dotenv;
 use reqwest::{
-    Client,
-    StatusCode,
+    Client, StatusCode,
     header::{HeaderMap, HeaderValue},
 };
+use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
+use tracing_subscriber::fmt;
+use utoipa::OpenApi;
 
 use crate::{
     delegates::error::APIError,
     docs::handlers::{docs, openapi_axle},
-    metrics::{index::index, database::MetricsState},
+    metrics::{database::MetricsState, index::index},
     routes::{
         completions::{completions, validate_model},
         legacy::{echo, get_model, manual_hello},
@@ -114,6 +115,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/echo", get(echo))
         .route("/hey", get(manual_hello));
 
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .allow_origin(Any)
+        .max_age(Duration::from_secs(60) * 10);
+
     let state = MetricsState::init().await;
 
     run_migrations(&state).await;
@@ -126,7 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 body: Some("Not Found"),
             }
         })
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .layer(cors);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", PORT)).await?;
 

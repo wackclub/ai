@@ -39,14 +39,17 @@ pub async fn validate_model(req: Request, next: Next) -> Result<Response, APIErr
         } else {
             obj.remove("service_tier");
         }
-        
+
         let needs_update = obj
             .get("model")
             .and_then(Value::as_str)
             .map_or(true, |m| !is_allowed_model(m));
-        
+
         if needs_update {
-            obj.insert("model".to_string(), Value::String(DEFAULT_MODEL.to_string()));
+            obj.insert(
+                "model".to_string(),
+                Value::String(DEFAULT_MODEL.to_string()),
+            );
         }
     }
 
