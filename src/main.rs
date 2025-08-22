@@ -133,8 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 body: Some("Not Found"),
             }
         })
-        .with_state(state.clone())
-        .layer(cors);
+        .layer(cors)
+        .with_state(state.clone());
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", PORT)).await?;
 
